@@ -14,7 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from xml.etree import ElementTree
+import pprint
 
 __author__ = 'JJ Lueck (jlueck@gmail.com)'
 
@@ -160,8 +162,7 @@ class Channel(WordPressObject):
   def __init__(self, title='', link='', description='', pubDate='',
                generator='http://blogger2wordpress.appspot.com',
                language='en', base_site_url='http://wordpress.com',
-               base_blog_url='http://wordpress.com',
-               categories=[], tags=[], items=[]):
+               base_blog_url='http://wordpress.com', categories=''):
     self.title = title
     self.link = link
     self.description = description
@@ -171,8 +172,9 @@ class Channel(WordPressObject):
     self.base_site_url = base_site_url
     self.base_blog_url = base_blog_url
     self.categories = categories
-    self.tags = tags
-    self.items = items
+    self.tags = []
+    self.items = []
+
 
   def _ToElementTree(self):
     # Write out the metadata
@@ -189,13 +191,15 @@ class Channel(WordPressObject):
                      self.base_blog_url)
 
     # Write out the categories assigned to the blog
+    #		<wp:category><wp:category_nicename>legal-spend</wp:category_nicename><wp:category_parent></wp:category_parent><wp:cat_name><![CDATA[Legal Spend]]></wp:cat_name></wp:category>
     for category in self.categories:
       cat_elem = ElementTree.Element('%s:category' % WORDPRESS_NS_TAG)
-      self._SubElmement(cat_elem, '%s:category_name' % WORDPRESS_NS_TAG,
-                        category)
-      self._SubElmement(cat_elem, '%s:category_nicename' % WORDPRESS_NS_TAG,
-                        category)
-      self._SubElmement(cat_elem, '%s:category_parent' % WORDPRESS_NS_TAG)
+      cat_nospaces =  category.replace(' ', '-')
+      cat_nicename = cat_nospaces.lower()
+      self._SubElement(cat_elem, '%s:category_nicename' % WORDPRESS_NS_TAG,
+                        cat_nicename)
+      self._SubElement(cat_elem, '%s:category_parent' % WORDPRESS_NS_TAG) 
+      self._SubElement(cat_elem, '%s:cat_name' % WORDPRESS_NS_TAG).append( CDataSection( category ) )
       root.append(cat_elem)
 
     # Write out the tags assigned to the blog.
@@ -224,7 +228,8 @@ class Item(WordPressObject):
                description='', content='', post_id='', post_date='',
                comment_status='open', ping_status='open', status='publish',
                post_parent='0', menu_order='0', post_type='post',
-               post_password=''):
+               post_password='', blogger_blog='', blogger_author='',
+               blogger_permalink=''):
     self.title = title
     self.link = link
     self.pubDate = pubDate
@@ -243,6 +248,9 @@ class Item(WordPressObject):
     self.post_password = post_password
     self.labels = []
     self.comments = []
+    self.blogger_blog = blogger_blog
+    self.blogger_permalink = blogger_permalink
+    self.blogger_author = blogger_author
 
   def _ToElementTree(self):
     root = ElementTree.Element('item')
@@ -276,10 +284,46 @@ class Item(WordPressObject):
     content = self._SubElement(root, '%s:encoded' % CONTENT_NS_TAG, '')
     content.append(CDataSection(self.content))
 
-    # A label assigned to a post is written out as a "tag" and not a "category."
+    # A label assigned to a post is written out as a "category" and not a "tag."
     for label in self.labels:
-      label_elem = self._SubElement(root, 'category', label)
-      label_elem.set('domain', 'tag')
+      
+      # <category><![CDATA[Law firm practices]]></category>
+      label_elem_noattr = self._SubElement(root, 'category', '')
+      label_elem_noattr.append(CDataSection(label))
+
+      #	<category domain="category" nicename="law-firm-practices"><![CDATA[Law firm practices]]></category>
+      label_nospaces = label.replace(' ', '-')
+      label_nicename = label_nospaces.lower()
+      label_elem_wattr = self._SubElement(root, 'category', '')
+      label_elem_wattr.set('domain', 'category')
+      label_elem_wattr.set('nicename', label_nicename)
+      label_elem_wattr.append(CDataSection(label))
+
+
+
+    if self.blogger_blog:
+      post_meta_elem = ElementTree.Element('%s:postmeta' % WORDPRESS_NS_TAG)
+      self._SubElement(post_meta_elem, '%s:meta_key' % WORDPRESS_NS_TAG,
+                       'blogger_blog')
+      self._SubElement(post_meta_elem, '%s:meta_value' % WORDPRESS_NS_TAG,
+                       self.blogger_blog)
+      root.append(post_meta_elem)
+
+    if self.blogger_permalink:
+      post_meta_elem = ElementTree.Element('%s:postmeta' % WORDPRESS_NS_TAG)
+      self._SubElement(post_meta_elem, '%s:meta_key' % WORDPRESS_NS_TAG,
+                       'blogger_permalink')
+      self._SubElement(post_meta_elem, '%s:meta_value' % WORDPRESS_NS_TAG,
+                       self.blogger_permalink)
+      root.append(post_meta_elem)
+
+    if self.blogger_author:
+      post_meta_elem = ElementTree.Element('%s:postmeta' % WORDPRESS_NS_TAG)
+      self._SubElement(post_meta_elem, '%s:meta_key' % WORDPRESS_NS_TAG,
+                       'blogger_author')
+      self._SubElement(post_meta_elem, '%s:meta_value' % WORDPRESS_NS_TAG,
+                       self.blogger_author)
+      root.append(post_meta_elem)
 
     for comment in self.comments:
       root.append(comment._ToElementTree())
